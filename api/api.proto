@@ -1,0 +1,356 @@
+syntax = "proto3";
+
+package api;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "mp4/api";
+
+
+enum Status {
+    Alive = 0;
+    Timeout = 1;
+    Leaved = 2;
+}
+
+message Process {
+    string ip = 1;
+    int32 port = 2;
+    google.protobuf.Timestamp joinTime = 3; // when the process is joined
+    google.protobuf.Timestamp lastUpdateTime = 4; // when the process is pinged
+    Status status = 5;
+}
+
+message WriteId {
+    string ip = 1;
+    int32 port = 2;
+    google.protobuf.Timestamp createTime = 3;
+}
+
+// Failure Detector Ring messages
+message PingMessage {
+    repeated Process processes = 1;
+}
+
+message AckMessage {
+    string received = 1;
+}
+
+message JoinMessage {
+    Process process = 1;
+}
+
+message LeaveMessage {
+    Process process = 1;
+}
+
+enum MessageType {
+    Ping = 0;
+    Ack = 1;
+    Join = 2;
+    Leave = 3;
+}
+
+message Metadata {
+    MessageType type = 1;
+    oneof message {
+        PingMessage ping = 2;
+        AckMessage ack = 3;
+        JoinMessage join = 4;
+        LeaveMessage leave = 5;
+    }
+}
+
+// gRPC-SDFS service
+enum ResponseStatus {
+    OK = 0;
+    ERROR = 1;
+    NOT_FOUND = 2;
+    NOT_CONVERGED = 3;
+}
+
+message Sequence {
+    google.protobuf.Timestamp time = 1; // leader join time
+    int32 count = 2;                    // leader sequence number
+}
+
+message ReadRequest {
+    string filename = 1;
+    int32 version = 2;
+    string localFilename = 4;
+    optional Sequence seq = 3;
+}
+
+message ReadResponse {
+    bytes data = 1;
+    ResponseStatus status = 2;
+    optional Sequence seq = 3;
+}
+
+message WriteRequest {
+    string filename = 1;
+    bytes data = 2;
+    WriteId writeId = 3;
+    optional Sequence seq = 4;
+}
+
+message WriteResponse {
+    ResponseStatus status = 1;
+}
+
+message DeleteRequest {
+    string filename = 1;
+    optional Sequence seq = 2;
+}
+
+message DeleteResponse {
+    ResponseStatus status = 1;
+}
+
+message LookupRequest {
+    string filename = 1;
+    optional Sequence seq = 2;
+}
+
+message LookupResponse {
+    string ip = 1;
+    int32 port = 2;
+    ResponseStatus status = 3;
+}
+
+message BulkLookupRequest {
+    repeated string filenames = 1;
+    optional Sequence seq = 2;
+}
+
+message BulkLookupResponse {
+    string ip = 1;
+    int32 port = 2;
+    repeated string missingFiles = 3;
+}
+
+message FetchSequenceRequest {}
+
+message FetchSequenceResponse {
+    ResponseStatus status = 1;
+    Sequence seq = 2;
+}
+
+service SDFSService {
+    // client requests global sequence to leader
+    rpc FetchSequence(FetchSequenceRequest) returns (FetchSequenceResponse) {}
+    // get a file from replicas
+    rpc Read(ReadRequest) returns (ReadResponse) {}
+    // put a file to replicas
+    rpc Write(WriteRequest) returns (WriteResponse) {}
+    // delete a file from replicas
+    rpc Delete(DeleteRequest) returns (DeleteResponse) {}
+    // lookup a file from replicas
+    rpc Lookup(LookupRequest) returns (LookupResponse) {}
+    // bulk lookup files from replicas, responded with missing files
+    rpc BulkLookup(BulkLookupRequest) returns (BulkLookupResponse) {}
+}
+
+message LookupLeaderRequest {}
+
+message LookupLeaderResponse {
+    string address = 1;
+}
+
+message UpdateLeaderRequest {
+    Process leader = 1;
+}
+
+message UpdateLeaderResponse {
+    ResponseStatus status = 1;
+}
+
+service DNSService {
+    rpc Lookup(LookupLeaderRequest) returns (LookupLeaderResponse) {}
+    rpc Update(UpdateLeaderRequest) returns (UpdateLeaderResponse) {}
+}
+
+// IDunno service
+message EvalResult {
+    // SDFS filename (or raw string) as a input inference data
+    string input = 1;
+    // output stored in a string, either the actual output or the SDFS filename
+    string output = 2;
+}
+
+enum BatchStatus {
+    Available = 0;
+    InProgress = 1;
+    Completed = 2;
+}
+
+message BatchInput {
+    int32 batchId = 1;
+    // either a SDFS filename or a raw string
+    repeated string inputs = 2;
+}
+
+message BatchOutput {
+    int32 batchId = 1;
+    repeated EvalResult results = 2;
+    float metric = 3;
+}
+
+message BatchState {
+    BatchStatus status = 1;
+    BatchInput batchInput = 2;
+    BatchOutput batchOutput = 3;
+    google.protobuf.Timestamp queryTime = 4;
+    google.protobuf.Timestamp receiveTime = 5;
+}
+
+message Job {
+    string id = 1;                              // job created time
+    string modelType = 2;                       // model type
+    string dataset = 3;                         // dataset name
+    int32 batchSize = 4;                        // number of inputs per batch
+    google.protobuf.Timestamp startTime = 5;    // job start time
+    google.protobuf.Timestamp finishTime = 6;   // job finish time
+    int32 totalQueries = 7;                     // total number of queries required
+    int32 completedQueries = 8;                 // current number of finished queries
+    repeated BatchState batchStates = 9;        // batch states
+    repeated float queryRates = 10;             // query rates
+    repeated float queryProcessTimes = 11;      // query process times
+}
+
+message CoordinatorBackup {
+    map<string, string> modelStore = 1;
+    repeated Job activeJobs = 2;
+    repeated Job completedJobs = 3;
+    repeated Job pendingJobs = 4;
+}
+
+message TrainTask {
+    // model name
+    string model = 1;
+    // dataset folder name (stored in SDFS)
+    string dataset = 2;
+}
+
+message InferenceTask {
+    // model name
+    string model = 1;
+    // batch size of input data
+    int32 batchSize = 2;
+}
+
+message TrainRequest {
+    TrainTask trainTask = 1;
+}
+
+message TrainResponse {
+    ResponseStatus status = 1;
+}
+
+message InferenceRequest {
+    InferenceTask inferenceTask = 1;
+    string jobId = 2;
+}
+
+message InferenceResponse {
+    ResponseStatus status = 1;
+}
+
+message QueryDataRequest {
+    // job that conduct this query
+    string jobId = 1;
+    // worker process
+    Process worker = 2;
+    // batch output from previous round; nil if not exists
+    BatchOutput batchOutput = 3;
+}
+
+message QueryDataResponse {
+    BatchInput batchInput = 1;
+    // whether inputs is filenames or raw string inputs
+    bool isFilename = 2;
+}
+
+message IDunnoStatusRequest {
+    string which = 1;
+    string payload = 2;
+}
+
+message IDunnoStatusResponse {
+    string message = 1;
+}
+
+message BackupRequest {
+    CoordinatorBackup backup = 1;
+}
+
+message BackupResponse {}
+
+service CoordinatorService {
+    // train a model with specified dataset
+    rpc Train(TrainRequest) returns (TrainResponse) {}
+    // start inference job with specified model and query batch size
+    rpc Inference(InferenceRequest) returns (InferenceResponse) {}
+    // query a batch of data from coordinator & submit batch result from previous round
+    rpc QueryData(QueryDataRequest) returns (QueryDataResponse) {}
+    // get real-time updates on workers & jobs status
+    rpc IDunnoStatus(IDunnoStatusRequest) returns (IDunnoStatusResponse) {}
+    // backup coordinator state
+    rpc Backup(BackupRequest) returns (BackupResponse) {}
+}
+
+message FinishInferenceRequest {}
+
+message FinishInferenceResponse {}
+
+message HeartbeatRequest {}
+
+message HeartbeatResponse {
+    ResponseStatus status = 1;
+}
+
+service WorkerService {
+    // train a model with specified dataset
+    rpc Train(TrainRequest) returns (TrainResponse) {}
+    // start inference job with specified model and query batch size
+    rpc Inference(InferenceRequest) returns (InferenceResponse) {}
+    // notify worker that inference is finished
+    rpc FinishInference(FinishInferenceRequest) returns (FinishInferenceResponse) {}
+}
+
+// Python inference service gRPC
+message GreetRequest {
+    string name = 1;
+}
+
+message GreetResponse {
+    string message = 1;
+}
+
+message ServeModelRequest {
+    string model = 1;
+}
+
+message ServeModelResponse {
+    ResponseStatus status = 1;
+}
+
+message EvaluateRequest {
+    repeated string inputs = 1;
+}
+
+message EvaluateResponse {
+    repeated EvalResult results = 1;
+    float metric = 2;
+    ResponseStatus status = 3;
+}
+
+service InferenceService {
+    rpc Greet(GreetRequest) returns (GreetResponse) {}
+    // pretrain model on specified dataset
+    rpc Train(TrainRequest) returns (TrainResponse) {}
+    // start loading model and waiting for incoming input
+    rpc ServeModel(ServeModelRequest) returns (ServeModelResponse) {}
+    // evaluate model with a set of files
+    rpc Evaluate(EvaluateRequest) returns (EvaluateResponse) {}
+}

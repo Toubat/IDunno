@@ -1,0 +1,15 @@
+{
+  "ip": [
+    "fa22-cs425-2401.cs.illinois.edu:7777",
+    "fa22-cs425-2402.cs.illinois.edu:7777",
+    "fa22-cs425-2403.cs.illinois.edu:7777",
+    "fa22-cs425-2404.cs.illinois.edu:7777",
+    "fa22-cs425-2405.cs.illinois.edu:7777",
+    "fa22-cs425-2406.cs.illinois.edu:7777",
+    "fa22-cs425-2407.cs.illinois.edu:7777",
+    "fa22-cs425-2408.cs.illinois.edu:7777",
+    "fa22-cs425-2409.cs.illinois.edu:7777",
+    "fa22-cs425-2410.cs.illinois.edu:7777"
+  ],
+  "coordinator": "fa22-cs425-2401.cs.illinois.edu:7778"
+}
