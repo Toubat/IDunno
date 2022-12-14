@@ -1,4 +1,4 @@
-# MP4 - Fault-tolerent Distributed ML Cluster
+# IDunno - Fault-tolerent Distributed ML Cluster
 
 <div>
 <img src="logo.jpg" />
